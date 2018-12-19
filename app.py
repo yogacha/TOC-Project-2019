@@ -1,75 +1,46 @@
-from bottle import route, run, request, abort, static_file
+from flask import Flask, request
+from fsm import machine
+from utils import send_text_message
+from fsm import machine
 
-from fsm import TocMachine
+app = Flask(__name__)
 
+VERIFY_TOKEN = "123123123"
 
-VERIFY_TOKEN = "Your Webhook Verify Token"
-machine = TocMachine(
-    states=[
-        'user',
-        'state1',
-        'state2'
-    ],
-    transitions=[
-        {
-            'trigger': 'advance',
-            'source': 'user',
-            'dest': 'state1',
-            'conditions': 'is_going_to_state1'
-        },
-        {
-            'trigger': 'advance',
-            'source': 'user',
-            'dest': 'state2',
-            'conditions': 'is_going_to_state2'
-        },
-        {
-            'trigger': 'go_back',
-            'source': [
-                'state1',
-                'state2'
-            ],
-            'dest': 'user'
-        }
-    ],
-    initial='user',
-    auto_transitions=False,
-    show_conditions=True,
-)
+@app.route('/webhook', methods=['GET'])
+def verify():
+    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.challenge"):
+        if not request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return "Verification token mismatch", 403
+        return request.args["hub.challenge"], 200
+    return "Hello world", 200
 
-
-@route("/webhook", method="GET")
-def setup_webhook():
-    mode = request.GET.get("hub.mode")
-    token = request.GET.get("hub.verify_token")
-    challenge = request.GET.get("hub.challenge")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        print("WEBHOOK_VERIFIED")
-        return challenge
-
-    else:
-        abort(403)
-
-
-@route("/webhook", method="POST")
+@app.route('/webhook', methods=['POST'])
 def webhook_handler():
-    body = request.json
+    body = request.get_json()
     print('\nFSM STATE: ' + machine.state)
     print('REQUEST BODY: ')
-    print(body)
 
     if body['object'] == "page":
         event = body['entry'][0]['messaging'][0]
-        machine.advance(event)
-        return 'OK'
+        try:
+            e = { 'text': event['message']['text'],
+                    'id': event['sender']['id'] }
+            # print('msg', e)
+            machine.advance(e)
+            # send_text_message(e['id'], e['text'])
+        except:
+            pass
+        return 'OKKKKK'
 
-
-@route('/show-fsm', methods=['GET'])
-def show_fsm():
-    machine.get_graph().draw('fsm.png', prog='dot', format='png')
-    return static_file('fsm.png', root='./', mimetype='image/png')
-
+# @app.route('/show-fsm', methods=['GET'])
+# def show_fsm():
+#     machine.get_graph().draw('fsm.png', prog='dot', format='png')
+#     return static_file('fsm.png', root='./', mimetype='image/png')
 
 if __name__ == "__main__":
-    run(host="localhost", port=5000, debug=True, reloader=True)
+    app.run(debug = True, port = 5000)
+
+
+
+
